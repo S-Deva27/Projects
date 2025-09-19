@@ -1,0 +1,91 @@
+#include <SoftwareSerial.h>
+#include <Servo.h>
+
+// Pin definitions
+#define IR_ENTRY 2      // Entry IR sensor pin
+#define IR_EXIT 3       // Exit IR sensor pin
+#define LED_ALERT 4     // LED alert pin
+#define SERVO_PIN 5     // Servo motor control pin
+
+SoftwareSerial BT(10, 11); // RX, TX
+
+int crowdCount = 0;
+int maxCapacity = 10;   // threshold for crowd detection
+
+bool alertSent = false; // flag to ensure alert prints only once
+
+Servo gateServo;
+
+void setup() {
+  pinMode(IR_ENTRY, INPUT);
+  pinMode(IR_EXIT, INPUT);
+  pinMode(LED_ALERT, OUTPUT);
+
+  Serial.begin(9600);
+  BT.begin(9600);
+
+  gateServo.attach(SERVO_PIN);
+  gateServo.write(0);   // start with gate OPEN (0°)
+
+  Serial.println("======================================");
+  Serial.println("   IR Crowd Monitoring with Entry & Exit");
+  Serial.println("======================================");
+  BT.println("Crowd Monitoring System Started...");
+}
+
+void loop() {
+  // ENTRY SENSOR
+  if (digitalRead(IR_ENTRY) == LOW) {  // beam broken at entry
+    crowdCount++;
+    Serial.println("--------------------------------------");
+    Serial.println("🚶 Entry Detected");
+    Serial.print("👥 Current Crowd Count: ");
+    Serial.print(crowdCount);
+    Serial.print(" / ");
+    Serial.println(maxCapacity);
+    BT.print("Entry | Crowd: ");
+    BT.println(crowdCount);
+    delay(800);  // debounce
+  }
+
+  // EXIT SENSOR
+  if (digitalRead(IR_EXIT) == LOW) {  // beam broken at exit
+    if (crowdCount > 0) {
+      crowdCount--;
+      Serial.println("--------------------------------------");
+      Serial.println("🏃 Exit Detected");
+      Serial.print("👥 Current Crowd Count: ");
+      Serial.print(crowdCount);
+      Serial.print(" / ");
+      Serial.println(maxCapacity);
+      BT.print("Exit | Crowd: ");
+      BT.println(crowdCount);
+    } else {
+      Serial.println("--------------------------------------");
+      Serial.println("⚠ Exit Detected but No One Inside!");
+      BT.println("⚠ Exit Detected but Crowd = 0");
+    }
+    delay(800);  // debounce
+  }
+
+  // ALERT: Gate control
+  if (crowdCount >= maxCapacity && !alertSent) {
+    digitalWrite(LED_ALERT, HIGH);
+    gateServo.write(120);  // close gate
+    Serial.println("======================================");
+    Serial.println("⚠ ALERT: Overcrowding Detected!");
+    Serial.println("🚫 Gate Closed");
+    Serial.println("======================================");
+    BT.println("⚠ ALERT: Overcrowding Detected! Gate Closed.");
+    alertSent = true;   // mark alert as already sent
+  }
+
+  // Reset alert if below capacity
+  if (crowdCount < maxCapacity && alertSent) {
+    digitalWrite(LED_ALERT, LOW);
+    gateServo.write(0);  // open gate
+    Serial.println("✅ Safe: Crowd Below Capacity");
+    Serial.println("🚪 Gate Opened");
+    alertSent = false;   // ready to send alert again if needed
+  }
+}
